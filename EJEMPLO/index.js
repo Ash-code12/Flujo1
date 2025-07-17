@@ -5,6 +5,8 @@ const ENV_FILE = path.join(__dirname, '.env');
 dotenv.config({ path: ENV_FILE });
 
 const restify = require('restify');
+const { BotFrameworkAdapter } = require('botbuilder');
+
 
 // Import required bot services.
 // See https://aka.ms/bot-services to learn more about the different parts of a bot.
@@ -51,14 +53,21 @@ server.listen(process.env.port || process.env.PORT || 3978, () => {
     console.log(`\n${ server.name } listening to ${ server.url }`);
 });
 
-const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
+/*const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
     MicrosoftAppId: process.env.MicrosoftAppId,
     MicrosoftAppPassword: process.env.MicrosoftAppPassword,
     MicrosoftAppType: process.env.MicrosoftAppType,
     MicrosoftAppTenantId: process.env.MicrosoftAppTenantId
-});
+}); 
 
-const botFrameworkAuthentication = createBotFrameworkAuthenticationFromConfiguration(null, credentialsFactory);
+const botFrameworkAuthentication = createBotFrameworkAuthenticationFromConfiguration(null, credentialsFactory); */
+
+const { ConfigurationBotFrameworkAuthentication } = require('botbuilder');
+
+const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication({
+    MicrosoftAppId: '',
+    MicrosoftAppPassword: '',
+});
 
 // Create adapter.
 // See https://aka.ms/about-bot-adapter to learn more about adapters.

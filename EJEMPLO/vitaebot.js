@@ -1,8 +1,10 @@
 const { ActivityHandler, MessageFactory, CardFactory } = require('botbuilder');
-const { DialogSet, DialogTurnStatus, MemoryStorage, ConversationState, UserState } = require('botbuilder-dialogs');
+const { DialogSet, DialogTurnStatus, MemoryStorage, ConversationState, UserState, TextPrompt } = require('botbuilder-dialogs');
 const { VitaeDialog } = require('./Dialogs/vitaeDialog');
 const { CandidatoDialog } = require('./Dialogs/candidatoDialog');
 const { ValidacionDialog } = require('./Dialogs/validacionDialog');
+const { SolicitudDialog } = require('./Dialogs/solicitudDialog');
+
 const axios = require('axios');
 
 class VitaeBot extends ActivityHandler {
@@ -15,11 +17,14 @@ class VitaeBot extends ActivityHandler {
         this.dialogState = this.conversationState.createProperty("dialogState");
         this.userDataAccessor = userState.createProperty("userData");
         this.conversationData = this.conversationState.createProperty("conversationData");
-
         this.dialogs = new DialogSet(this.dialogState);
+
+        this.dialogs.add(new TextPrompt('TEXT_PROMPT'));
         this.dialogs.add(new VitaeDialog("vitaeDialog"));
         this.dialogs.add(new CandidatoDialog("candidatoDialog"));
         this.dialogs.add(new ValidacionDialog("validacionDialog"));
+        this.dialogs.add(new SolicitudDialog('solicitudDialog')); //ID
+        //this.dialogs.add(new SolicitudDialog(conversationState, userState));  //Parametros
 
         // Informacion del usuario guardada
         this.onDialog(async (context, next) => {
@@ -28,33 +33,40 @@ class VitaeBot extends ActivityHandler {
             await next();
         });
 
-
         this.onMessage(async (context, next) => {
-
             const userData = await this.userDataAccessor.get(context, {});
-            const userMessage = (typeof context.activity.text === 'string') ? context.activity.text.trim().toLowerCase() : '';
-            console.log("Mensaje del usuario OnMessage:  -> ", userMessage);
+    
+            // Primero define userMessage correctamente
+            let userMessage = (typeof context.activity.text === 'string') 
+                ? context.activity.text.trim().toLowerCase() 
+                : '';
 
-    // Continuar diálogo si ya hay uno en curso
+            console.log("Mensaje del usuario OnMessage: ->", userMessage);
+            console.log("ACTIVITY COMPLETA >>>", JSON.stringify(context.activity, null, 2));
+
+            // Continuar diálogo si ya hay uno en curso
             const dialogContext = await this.dialogs.createContext(context);
             const dialogTurnResult = await dialogContext.continueDialog();
             console.log("Estado del diálogo: ----> ", dialogTurnResult.status);
+            
             switch (dialogTurnResult.status) {
                 case DialogTurnStatus.waiting:
-        // 🔒 Diálogo activo esperando input → no hacer nada más
+                    // 🔒 Diálogo activo esperando input → no hacer nada más
                     return;
 
                 case DialogTurnStatus.complete: 
                     console.log("Dialogo Completado");
+                    // No break - continuar al siguiente case
                 case DialogTurnStatus.cancelled: 
                     console.log("Dialogo Cancelado");
+                    // No break - continuar al siguiente case
                 case DialogTurnStatus.empty:
                     console.log("Diálogo Vacío o nuevo");
-
-        // 🟢 El diálogo terminó o no hay uno activo → mostrar bienvenida y opciones
+                    
+                    // 🟢 El diálogo terminó o no hay uno activo → mostrar bienvenida y opciones
                     await this.checkAndSendWelcomeMessage(context);
 
-        // Detectar palabra clave en el mensaje para seleccionar opción automáticamente
+                    // Detectar palabra clave en el mensaje para seleccionar opción automáticamente
                     switch (userMessage) {
                         case "vitae":
                             console.log("Opción seleccionada: vitae");
@@ -70,7 +82,13 @@ class VitaeBot extends ActivityHandler {
                             console.log("Opción seleccionada: validacion");
                             userData.selectedOption = "validacion";
                             break;
+                            
+                        case "solicitud": 
+                            console.log("Opción seleccionada: solicitud");
+                            userData.selectedOption = "solicitud";
+                            break;
 
+                        
                         default:
                             console.log("Opción seleccionada: Sin opción seleccionada");
                             userData.selectedOption = "sinOpcion";
@@ -78,7 +96,7 @@ class VitaeBot extends ActivityHandler {
                     }
                     console.log("Respuesta de opción: " + userData.selectedOption);
 
-        // Si no se detecta opción válida, mostrar tarjeta con opciones
+                    // Si no se detecta opción válida, mostrar tarjeta con opciones
                     if (!userData.selectedOption || userData.selectedOption === "sinOpcion") {
                         console.log("No hay opción seleccionada. Enviando tarjeta.");
                         await this.sendOptionsCard(context, userMessage);
@@ -98,6 +116,10 @@ class VitaeBot extends ActivityHandler {
                                 await dialogContext.beginDialog("validacionDialog");
                                 break;
 
+                            case "solicitud":
+                                await dialogContext.beginDialog("solicitudDialog");
+                                break;
+
                         }
 
                         // Limpiar opción después de usarla
@@ -114,7 +136,6 @@ class VitaeBot extends ActivityHandler {
             await next();
         });
 
-
         this.onMembersAdded(async (context, next) => {
             for (const member of context.activity.membersAdded) {
                 if (member.id !== context.activity.recipient.id) {
@@ -125,11 +146,11 @@ class VitaeBot extends ActivityHandler {
         });
     }
 
-
     async checkAndSendWelcomeMessage(turnContext) {
         const userData = await this.userDataAccessor.get(turnContext, {});
         const currentTime = Date.now();
         const lastInteractionTime = userData.lastInteractionTime;
+
 
         if (!lastInteractionTime || (currentTime - lastInteractionTime) > 21600000) { 
             const welcomeMessage = `Me alegro que estés aquí, ${turnContext.activity.from.name}`;
@@ -144,60 +165,26 @@ class VitaeBot extends ActivityHandler {
         }
     }
 
+    async sendOptionsCard(context) {
+        const heroCard = CardFactory.heroCard(
+            '¿Qué deseas hacer?',
+            null,
+            [
+                { type: 'imBack', title: '📝 Registrar nueva solicitud', value: 'solicitud' },
+                { type: 'imBack', title: '🔍 Validación ID Solicitud', value: 'consultar' },
+                { type: 'imBack', title: '👤 Búsqueda de candidato', value: 'candidato' },
+            ]
+        );
 
-    async sendOptionsCard(context, userMessage = '') {
-        const userData = await this.userDataAccessor.get(context, {});
-        const lowerText = userMessage.toLowerCase();
-
-        if (lowerText.includes("vitae")) {
-            userData.selectedOption = "vitae";
-            
-        } else if (lowerText.includes("búsqueda") || lowerText.includes("busqueda")) {
-            userData.selectedOption = "busqueda";
-            
-        } else {
-            const card = CardFactory.heroCard(
-                '¿Qué deseas hacer?',
-                'Selecciona una de las opciones para continuar:',
-                null,
-                [
-                    {
-                        type: 'imBack',
-                        title: 'Transformación Vitae',
-                        value: 'vitae'
-                    },
-                    {
-                        type: 'imBack',
-                        title: 'Validación ID Solicitud',
-                        value: 'validacion'
-                    },
-                    {
-                        type: 'imBack',
-                        title: 'Búsqueda de Candidatos',
-                        value: 'busqueda'
-                    }
-                ]
-            );
-            await context.sendActivity(MessageFactory.attachment(card));
-        }
-        await this.userDataAccessor.set(context, userData);
-        await this.userState.saveChanges(context);
+        await context.sendActivity({ attachments: [heroCard] });
     }
-
 
     async run(context) {
         await super.run(context); // Ejecuta onMessage, onMembersAdded, etc.
 
-        // const dialogContext = await this.dialogs.createContext(context);
-        // await dialogContext.continueDialog(); // Continua cualquier diálogo activo
-
         await this.conversationState.saveChanges(context, false);
         await this.userState.saveChanges(context, false);
     }
-
-
-
-
 
     // Envía el mensaje recibido al webhook de n8n y procesa la respuesta
     async sendToWebhook(context) {
@@ -212,7 +199,6 @@ class VitaeBot extends ActivityHandler {
         const userObject = context.activity.from.aadObjectId;
         const chatId = context.activity.conversation.id;
 
-    
         // Objeto que se enviará al webhook
         const payload = { 
             message: userMessage,
@@ -222,7 +208,7 @@ class VitaeBot extends ActivityHandler {
             userObject: userObject,
             attachments: []
         };
-    
+
         // Verificar si hay archivos adjuntos
         if (context.activity.attachments && context.activity.attachments.length > 0) {
             for (const attachment of context.activity.attachments) {
@@ -242,7 +228,7 @@ class VitaeBot extends ActivityHandler {
                 });
             }
         }
-    
+
         try {
             console.log("MENSAJE ENVIADO A N8N", JSON.stringify(payload, null, 2));
             const response = await axios.post(webhookUrl, payload);
@@ -250,7 +236,6 @@ class VitaeBot extends ActivityHandler {
             console.log("Contenido de respuesta:", JSON.stringify(response.data, null, 2));
 
             console.log("Respuesta del webhook:", response.data);
-            
             
             let replyMessage = 'El aplicativo se encuentra en mantenimiento.';
             if (Array.isArray(response.data) && response.data.length > 0) {
@@ -287,14 +272,13 @@ class VitaeBot extends ActivityHandler {
                 : "Solicitud enviada al sistema de búsqueda de candidatos.";
             await context.sendActivity(reply);
 
-
-            return await step.endDialog();
+            // Nota: Esta línea parece estar fuera de contexto, podría necesitar ser removida
+            // return await step.endDialog();
         } catch (error) {
             console.error("Error Webhook Candidatos:", error);
             await context.sendActivity("Error al buscar candidatos.");
         }
     }
-
 }
 
 module.exports.VitaeBot = VitaeBot;
