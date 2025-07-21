@@ -1,13 +1,16 @@
 const {WaterfallDialog, ComponentDialog, DialogSet, DialogTurnStatus, Dialog } = require('botbuilder-dialogs');
+
+//Tipos de dialogos para recolectar diferentes tipos de datos
 const { ChoicePrompt, TextPrompt, DateTimePrompt, ConfirmPrompt, NumberPrompt, AttachmentPrompt } = require('botbuilder-dialogs');
-const axios = require('axios');
-const { CardFactory } = require('botbuilder');
+// Selección de opción, Texto, Fechas, SI/NO, Números, Archivos adjuntos
+const axios = require('axios');  //Envía datos al webhook
+const { CardFactory } = require('botbuilder');  //Crea tarjetas adaptativas
 
-
-const CHOICE_PROMPT         = 'CHOICE_PROMPT';
-const CONFIRM_PROMPT        = 'CONFIRM_PROMPT';
-const TEXT_PROMPT           = 'TEXT_PROMPT';
-const NUMBER_PROMPT         = 'NUMBER_PROMPT';
+//Constantes
+const CHOICE_PROMPT         = 'CHOICE_PROMPT';   
+const CONFIRM_PROMPT        = 'CONFIRM_PROMPT';  
+const TEXT_PROMPT           = 'TEXT_PROMPT';     
+const NUMBER_PROMPT         = 'NUMBER_PROMPT'; 
 const DATETIME_PROMPT       = 'DATETIME_PROMPT';
 const WATERFALL_DIALOG      = 'WATERFALL_DIALOG';
 const FILE_PROMPT           = 'FILE_PROMPT';
@@ -16,7 +19,7 @@ var endDialog               = '';
 
 class ValidacionDialog extends ComponentDialog{
     constructor(conversationState,userState){
-        super('validacionDialog');
+        super('validacionDialog'); //Nombre al dialogo
 
         this.addDialog(new TextPrompt(TEXT_PROMPT));
         this.addDialog(new ChoicePrompt(CHOICE_PROMPT));
@@ -38,19 +41,19 @@ class ValidacionDialog extends ComponentDialog{
 
     async firstStep(step) {
         console.log("Primer Paso Validacion Dialog");
-        step.values.haraPregunta = 'si';
+        step.values.haraPregunta = 'si';  //Guarda que el usuario hará una pregunta
         await step.context.sendActivity("<br>📝 <b>Instrucción para preguntar al archivo DT_Solicitudes_2025</b><br><br>Puedes interactuar con este bot de dos formas. Sigue las instrucciones según lo que necesites hacer:<br><br><ol><li><b>1. Realizar una pregunta directa sobre la información del archivo:</b><br><em>Ejemplo:</em><br><blockquote>¿Cuáles son las últimas 5 vacantes incluidas?</blockquote>➡️ <i>Escribe tu pregunta y presiona <b>Enter</b>.</i></li><br><li><b>2. Validar una solicitud específica adjuntando un archivo PDF:</b><br><em>Ejemplo:</em><br><blockquote>Valida la solicitud 1081</blockquote>➡️ <i>Escribe la solicitud y presiona <b>Enter</b>.</i><br>📎 <b>En el siguiente paso, se te pedirá adjuntar el archivo .pdf correspondiente.</b></li></ol><hr>💡 <b>Consejo:</b> Sé claro y específico en tu mensaje para obtener una respuesta precisa del bot.<br><br>");
         return await step.prompt(TEXT_PROMPT, "¿Qué desea hacer?<br><br><b>1.</b> Pregunta Directa<br><b>2.</b>Validar Solicitud", { retryPrompt:"No entendí tu opcion. Por favor, escribe nuevamente." });
-    }
+    }  //Usuario escribe 1 o 2
 
 
     async secondStep(step) {
         console.log("Segundo Paso Validacion Dialog");
         console.log("Resultado STEP -->", step.result);
-        const resultado = (step.result || '').toLowerCase();
+        const resultado = (step.result || '').toLowerCase(); //Captura respuesta pasa a minusculas
 
         if (step.result === '1' || step.result === 'pregunta directa') {
-            step.values.tipoPregunta = 'pregunta';
+            step.values.tipoPregunta = 'pregunta';  //Guarda el tipo de acción como pregunta 
             return await step.prompt(TEXT_PROMPT, "Perfecto! ✍️ <b>Por favor escriba su pregunta.</b>", { retryPrompt:"No entendí tu pregunta. Por favor, escribe nuevamente." });
 
         } else if (step.result === '2' || step.result === 'validar solicitud') {
@@ -69,10 +72,10 @@ class ValidacionDialog extends ComponentDialog{
             console.log("Resultado STEP -->", step.result);
 
             const pregunta = step.result?.value || step.result;
-            step.values.userMessage = pregunta; //guarda la pregunta
+            step.values.userMessage = pregunta; //guarda lo que escribió el usuario
             console.log("Pregunta capturada paso 3 --> ", step.values.userMessage);
 
-            if(step.values.tipoPregunta === 'validar'){
+            if(step.values.tipoPregunta === 'validar'){   //Si tipo es validar pide adjuntar un archivo pdf
                 return await step.prompt(FILE_PROMPT, "Por favor adjunte la hoja de vida en formato <b>.pdf</b>");
 
             } else if (step.values.tipoPregunta === 'pregunta') {
@@ -87,7 +90,7 @@ class ValidacionDialog extends ComponentDialog{
         }
     }
 
-
+//Envía a webhook
     async sendToWebHook(step) {
         console.log("Entre a SEND WEBHOOK VITAE  accion a tomar --> ", step.values.tipoPregunta);
         console.log("RESPUESTA RECIBIDA del attachment:  "+ step.result);
@@ -95,7 +98,7 @@ class ValidacionDialog extends ComponentDialog{
 
         if(step.values.tipoPregunta === 'validar'){step.values.attachment = step.result};
 
-        const context = step.context;
+        const context = step.context;  //Si hay adjunto se guarda
         const webhookUrl = process.env.Vitae_n8n;      // CAMBIAR POR URL VALIDA
         
         const userMessage = step.values.userMessage;

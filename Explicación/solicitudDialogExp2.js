@@ -21,7 +21,7 @@ class SolicitudDialog extends ComponentDialog {
 
     async solicitarDatosBasicos(step) {
         await step.context.sendActivity(this.getMensajeDatosBasicos());
-        return Dialog.EndOfTurn;
+        return Dialog.EndOfTurn; //termina el paso y espera respuesta
     }
 
     async solicitarSkills(step) {
@@ -32,7 +32,7 @@ class SolicitudDialog extends ComponentDialog {
             return await step.endDialog();
         }
 
-        step.values.solicitudBasica = datosBasicos;
+        step.values.solicitudBasica = datosBasicos; //Guarda los datos
         
         await step.context.sendActivity(this.getResumenDatosBasicos(datosBasicos));
         await step.context.sendActivity(this.getMensajeSkills());
@@ -43,17 +43,17 @@ class SolicitudDialog extends ComponentDialog {
     async procesarSolicitud(step) {
         const skillsTexto = step.context.activity.text;
         if (!skillsTexto) {
-            await step.context.sendActivity('<br>❌ No se recibieron las skills.<br><br>');
+            await step.context.sendActivity('❌ No se recibieron las skills.');
             return await step.endDialog();
         }
 
         const solicitudCompleta = {
-            ...step.values.solicitudBasica,
+            ...step.values.solicitudBasica,  //copia todos los datos del paso anterior
             skillsOriginales: skillsTexto,
             fecha: new Date().toLocaleString('es-CO')
         };
 
-        await step.context.sendActivity('<br>Procesando skills con IA...<br><br>');
+        await step.context.sendActivity('Procesando skills con IA...');
 
         try {
             const skillsProcesadas = await this.procesarConIA(solicitudCompleta);
@@ -71,7 +71,7 @@ class SolicitudDialog extends ComponentDialog {
     extraerDatosBasicos(texto) {
         const patrones = {
             // Campos obligatorios
-            cliente: /cliente:\s*(.+)/i,
+            cliente: /cliente:\s*(.+)/i,  //cero o más espacios, (.+) todo lo que viene después, /i insensible a mayús y minús
             perfil: /perfil:\s*(.+)/i,
             prioridad: /prioridad:\s*(.+)/i,
             ciudad: /ciudad:\s*(.+)/i,
@@ -82,70 +82,134 @@ class SolicitudDialog extends ComponentDialog {
             rangoSalarial: /rango\s+salarial:\s*(.+)/i
         };
 
-        return Object.fromEntries(
-            Object.entries(patrones)
-                .map(([campo, patron]) => {
-                    const match = texto?.match(patron);
-                    return [campo, match ? match[1].trim() : ''];
+//Procesar patrones 
+        return Object.fromEntries(  //Convierte array de vuelta a objeto
+            Object.entries(patrones)  //Convierte objeto en array
+                .map(([campo, patron]) => { //Transforma cada patrón
+                    const match = texto?.match(patron);   //Busca patrón en el texto ? por si es null
+                    return [campo, match ? match[1].trim() : ''];  //(Match) primer grupo del regex, quita espacios inicio y final, devuelve string vacio si no encuentra nada
                 })
         );
     }
 
-    validarDatosBasicos(datos) {
+    validarDatosBasicos(datos) {  //Valida que los 4 campos tengan valor
         return datos.cliente && datos.perfil && datos.prioridad && datos.ciudad;
     }
 
     // Métodos de mensajes
-  getMensajeDatosBasicos() {
-    return ` <br>📋 <b>REGISTRO DE SOLICITUD</b><br><br>Por favor, proporciona la información:<br><br><b>CAMPOS OBLIGATORIOS:</b><br><b>Cliente:</b> <br><b>Perfil:</b><br><b>Prioridad:</b><br><b>Ciudad:</b><br><br><b>CAMPOS OPCIONALES:</b><br><b>Cliente Solvo:</b><br><b>Fecha Solicitud:</b> [DD/MM/YYYY]<br><b>Lab:</b><br><b>Rango Salarial:</b><br><br><b><hr>✍️ <b>Escribe la información ahora:</b><br><br>`;
-}
+    getMensajeDatosBasicos() {
+        return `📋 **REGISTRO DE SOLICITUD**
 
-getMensajeFormatoIncorrecto() {
-    return `<br>❌ <b>Faltan campos obligatorios</b><br><br><b>Cliente:</b> <br><b>Perfil:</b><br><b>Prioridad:</b><br><b>Ciudad:</b><br><br>Los campos opcionales pueden omitirse:<br><b>Cliente Solvo:</b> [si aplica]<br><b>Fecha Solicitud:</b> [DD/MM/YYYY]<br><b>Lab:</b><br><b>Rango Salarial:</b><br><br>`;
-}
+Por favor, proporciona la información. Los campos marcados con (*) son obligatorios:
 
-getResumenDatosBasicos(datos) {
-    console.log('Datos recibidos:', datos);
-    
-    // Verificar que el objeto datos existe y tiene las propiedades necesarias
-    if (!datos || typeof datos !== 'object') {
-        return `<br>❌ <b>Error:</b> Datos no válidos`; 
+**CAMPOS OBLIGATORIOS:**
+**Cliente:*** [Nombre del cliente]
+**Perfil:*** [Frontend/Backend/FullStack/DevOps/QA]
+**Prioridad:*** [Alta/Media/Baja]
+**Ciudad:*** [Ubicación o Remoto]
+
+**CAMPOS OPCIONALES:**
+**Cliente Solvo:** [Si aplica]
+**Fecha Solicitud:** [DD/MM/YYYY]
+**Lab:** [Laboratorio/Área]
+**Rango Salarial:** [Ejemplo: $2-3M]
+
+**Ejemplo:**
+Cliente: Empresa XYZ
+Perfil: Frontend
+Prioridad: Alta
+Ciudad: Bogotá
+Rango Salarial: $2.5-3M
+
+---
+✍️ **Escribe la información ahora:**`;
     }
 
-    let resumen = `<br>✅ <b>Datos registrados:</b><br><br><b>OBLIGATORIOS:</b><br>👤 <b>Cliente:</b> ${datos.cliente || 'No especificado'}<br>💼 <b>Perfil:</b> ${datos.perfil || 'No especificado'}<br>⚡ <b>Prioridad:</b> ${datos.prioridad || 'No especificado'}<br>🌍 <b>Ciudad:</b> ${datos.ciudad || 'No especificado'}`;
+    getMensajeFormatoIncorrecto() {
+        return `❌ **Faltan campos obligatorios** 
 
-    // Agregar campos opcionales solo si tienen valor
-    const opcionales = [];
-    if (datos.clienteSolvo) opcionales.push(`👥 <b>Cliente Solvo:</b> ${datos.clienteSolvo}`);
-    if (datos.fechaSolicitud) opcionales.push(`📅 <b>Fecha Solicitud:</b> ${datos.fechaSolicitud}`);
-    if (datos.lab) opcionales.push(`🔬 <b>Lab:</b> ${datos.lab}`);
-    if (datos.rangoSalarial) opcionales.push(`💰 <b>Rango Salarial:</b> ${datos.rangoSalarial}`);
+Los campos marcados con (*) son obligatorios:
+Cliente: [nombre] *
+Perfil: [tipo] *
+Prioridad: [nivel] *
+Ciudad: [ubicación] *
 
-    if (opcionales.length > 0) {
-        resumen += `<br><br><b>OPCIONALES:</b><br>${opcionales.join('<br>')}`;
+Los campos opcionales pueden omitirse:
+Cliente Solvo: [si aplica]
+Fecha Solicitud: [DD/MM/YYYY]
+Lab: [área]
+Rango Salarial: [ejemplo: $2-3M]`;
     }
 
-    return resumen;
-}
+    getResumenDatosBasicos(datos) {
+        let resumen = `✅ **Datos registrados:**
 
+**OBLIGATORIOS:**
+👤 **Cliente:** ${datos.cliente}
+💼 **Perfil:** ${datos.perfil}
+⚡ **Prioridad:** ${datos.prioridad}
+🌍 **Ciudad:** ${datos.ciudad}`;
 
+        // Agregar campos opcionales solo si tienen valor
+        const opcionales = [];
+        if (datos.clienteSolvo) opcionales.push(`👥 **Cliente Solvo:** ${datos.clienteSolvo}`);
+        if (datos.fechaSolicitud) opcionales.push(`📅 **Fecha Solicitud:** ${datos.fechaSolicitud}`);
+        if (datos.lab) opcionales.push(`🔬 **Lab:** ${datos.lab}`);
+        if (datos.rangoSalarial) opcionales.push(`💰 **Rango Salarial:** ${datos.rangoSalarial}`);
+
+        if (opcionales.length > 0) {
+            resumen += `\n\n**OPCIONALES:**\n${opcionales.join('\n')}`;
+        }
+
+        return resumen;
+    }
 
     getMensajeSkills() {
-         return `<br>🛠️ <b>AHORA LAS SKILLS</b><br><br>Describe las habilidades técnicas requeridas:<br><br><b>Ejemplos:</b><br><blockquote>- "React, TypeScript y experiencia en APIs REST"<br>- "Python, Django, PostgreSQL y Docker"<br>- "JavaScript, Node.js, React, bases de datos y AWS"</blockquote><hr>✍️ <b>Describe las skills requeridas:</b><br><br>`;
+        return `🛠️ **AHORA LAS SKILLS**
+
+Describe las habilidades técnicas requeridas:
+
+**Ejemplos:**
+- "React, TypeScript y experiencia en APIs REST"
+- "Python, Django, PostgreSQL y Docker"
+- "JavaScript, Node.js, React, bases de datos y AWS"
+
+---
+✍️ **Describe las skills requeridas:**`;
     }
 
     getMensajeExito(solicitud, skillsProcesadas) {
-        return `<br>✅ <b>Solicitud registrada exitosamente</b><br><br>📋 <b>RESUMEN COMPLETO:</b><br>👤 <b>Cliente:</b> ${solicitud.cliente}<br>💼 <b>Perfil:</b> ${solicitud.perfil}<br>⚡ <b>Prioridad:</b> ${solicitud.prioridad}<br>🌍 <b>Ciudad:</b> ${solicitud.ciudad}<br>📅 <b>Fecha:</b> ${solicitud.fecha}<br><br>🛠️ <b>Skills organizadas:</b><br><blockquote>${skillsProcesadas}</blockquote><br>La solicitud ha sido enviada al equipo de reclutamiento.<br><br>`;
+        return `✅ **Solicitud registrada exitosamente**
+
+📋 **RESUMEN COMPLETO:**
+👤 **Cliente:** ${solicitud.cliente}
+💼 **Perfil:** ${solicitud.perfil}
+⚡ **Prioridad:** ${solicitud.prioridad}
+🌍 **Ciudad:** ${solicitud.ciudad}
+📅 **Fecha:** ${solicitud.fecha}
+
+🛠️ **Skills organizadas:**
+${skillsProcesadas}
+
+La solicitud ha sido enviada al equipo de reclutamiento.`;
     }
 
-
     getMensajeExitoSinIA(solicitud) {
-        return `<br>✅ <b>Solicitud registrada</b> (Sin procesamiento IA)<br><br>📋 <b>RESUMEN:</b><br>👤 <b>Cliente:</b> ${solicitud.cliente}<br>💼 <b>Perfil:</b> ${solicitud.perfil}<br>⚡ <b>Prioridad:</b> ${solicitud.prioridad}<br>🌍 <b>Ciudad:</b> ${solicitud.ciudad}<br>🛠️ <b>Skills:</b> ${solicitud.skillsOriginales}<br><br>⚠️ Las skills no pudieron procesarse con IA, pero la solicitud fue registrada.<br><br>`;
+        return `✅ **Solicitud registrada** (Sin procesamiento IA)
+
+📋 **RESUMEN:**
+👤 **Cliente:** ${solicitud.cliente}
+💼 **Perfil:** ${solicitud.perfil}
+⚡ **Prioridad:** ${solicitud.prioridad}
+🌍 **Ciudad:** ${solicitud.ciudad}
+🛠️ **Skills:** ${solicitud.skillsOriginales}
+
+⚠️ Las skills no pudieron procesarse con IA, pero la solicitud fue registrada.`;
     }
 
     // Procesamiento con IA
     async procesarConIA(solicitud) {
-        const N8N_WEBHOOK_URL = 'https://n8n-esencia-suite.zntoks.easypanel.host/webhook-test/simulacion-bot';
+        const N8N_WEBHOOK_URL = 'https://tu-n8n-instance.com/webhook/organizar-perfil';
         
         const payload = {
             // Campos obligatorios
