@@ -3,7 +3,7 @@ const { DialogSet, DialogTurnStatus, MemoryStorage, ConversationState, UserState
 const { VitaeDialog } = require('./Dialogs/vitaeDialog');
 const { CandidatoDialog } = require('./Dialogs/candidatoDialog');
 const { ValidacionDialog } = require('./Dialogs/validacionDialog');
-const { SolicitudDialog } = require('./Dialogs/solicitudDialog');
+const SolicitudDialog = require('./Dialogs/solicitudDialog');
 
 const axios = require('axios');
 
@@ -23,7 +23,7 @@ class VitaeBot extends ActivityHandler {
         this.dialogs.add(new VitaeDialog("vitaeDialog"));
         this.dialogs.add(new CandidatoDialog("candidatoDialog"));
         this.dialogs.add(new ValidacionDialog("validacionDialog"));
-        this.dialogs.add(new SolicitudDialog('solicitudDialog')); //ID
+        this.dialogs.add(new SolicitudDialog());
         //this.dialogs.add(new SolicitudDialog(conversationState, userState));  //Parametros
 
         // Informacion del usuario guardada
