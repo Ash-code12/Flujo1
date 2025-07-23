@@ -1,4 +1,3 @@
-const { MessageFactory } = require('botbuilder');
 const { ComponentDialog, WaterfallDialog, Dialog } = require('botbuilder-dialogs');
 const axios = require('axios');
 
@@ -11,167 +10,276 @@ class SolicitudDialog extends ComponentDialog {
         this.conversationDataAccessor = conversationState.createProperty('conversationData');
         
         this.addDialog(new WaterfallDialog(WATERFALL_DIALOG, [
-            this.solicitarDatosBasicos.bind(this),
-            this.solicitarSkills.bind(this),
-            this.procesarSolicitud.bind(this)
+            this.pedirDatos.bind(this),
+            this.procesarSolicitud.bind(this),
+            this.finalizarProceso.bind(this)
         ]));
 
         this.initialDialogId = WATERFALL_DIALOG;
     }
 
-    async solicitarDatosBasicos(step) {
-        await step.context.sendActivity(this.getMensajeDatosBasicos());
+    // 📝 PASO 1: Solicitar datos
+    async pedirDatos(step) {
+        const mensaje = `
+📋 <b>NUEVA SOLICITUD</b>
+
+Por favor, proporciona la siguiente información:
+
+<b>CAMPOS OBLIGATORIOS:</b>
+• <b>Cliente:</b> 
+• <b>Usuario Solicita:</b> 
+• <b>Origen:</b> [USA/COL]
+• <b>Perfil:</b> 
+• <b>Prioridad:</b> [Alta/Media/Baja]
+• <b>Ciudad:</b> 
+• <b>Skills:</b> 
+
+<b>CAMPOS OPCIONALES:</b>
+• <b>Salario:</b> 
+• <b>Lab:</b> 
+
+<b>Ejemplo:</b>
+Cliente: TechCorp
+Usuario Solicita: Juan Pérez  
+Origen: COL
+Perfil: Developer Full Stack
+Prioridad: Alta
+Ciudad: Bogotá
+Skills: React, Node.js, PostgreSQL
+Salario: $8M - $12M
+        `;
+        
+        await step.context.sendActivity(mensaje);
         return Dialog.EndOfTurn;
     }
 
-    async solicitarSkills(step) {
-        const datosBasicos = this.extraerDatosBasicos(step.context.activity.text);
-        
-        if (!this.validarDatosBasicos(datosBasicos)) {
-            await step.context.sendActivity(this.getMensajeFormatoIncorrecto());
-            return await step.endDialog();
-        }
-
-        step.values.solicitudBasica = datosBasicos;
-        
-        await step.context.sendActivity(this.getResumenDatosBasicos(datosBasicos));
-        await step.context.sendActivity(this.getMensajeSkills());
-        
-        return Dialog.EndOfTurn;
-    }
-
+    // 🚀 PASO 2: Procesar con IA y mostrar resultado
     async procesarSolicitud(step) {
-        const skillsTexto = step.context.activity.text;
-        if (!skillsTexto) {
-            await step.context.sendActivity('<br>❌ No se recibieron las skills.<br><br>');
+        const datos = this.extraerDatos(step.context.activity.text);
+        
+        // Auto-completar usuario si no se proporciona
+        if (!datos.usuarioSolicita) {
+            datos.usuarioSolicita = step.context.activity.from?.name || 'Usuario Bot';
+        }
+
+        // Validar campos obligatorios
+        const errores = this.validarDatos(datos);
+        if (errores.length > 0) {
+            await step.context.sendActivity(`❌ <b>Faltan datos:</b>\n${errores.join('\n')}`);
             return await step.endDialog();
         }
 
-        const solicitudCompleta = {
-            ...step.values.solicitudBasica,
-            skillsOriginales: skillsTexto,
-            fecha: new Date().toLocaleString('es-CO')
-        };
+        // Procesar con IA
+        const solicitudProcesada = await this.procesarConIA(step, datos);
+        step.values.solicitud = solicitudProcesada;
 
-        await step.context.sendActivity('<br>Procesando skills con IA...<br><br>');
+        // Mostrar resultado
+        await step.context.sendActivity(this.generarResumen(solicitudProcesada));
+        
+        return Dialog.EndOfTurn;
+    }
 
-        try {
-            const skillsProcesadas = await this.procesarConIA(solicitudCompleta);
-            solicitudCompleta.skillsProcesadas = skillsProcesadas;
-            await step.context.sendActivity(this.getMensajeExito(solicitudCompleta, skillsProcesadas));
-        } catch (error) {
-            console.error('❌ Error procesando con IA:', error);
-            await step.context.sendActivity(this.getMensajeExitoSinIA(solicitudCompleta));
+    // 📤 PASO 3: Enviar al Excel
+    async finalizarProceso(step) {
+    const solicitud = step.values.solicitud;
+
+    try {
+        await step.context.sendActivity('📤 Enviando al sistema...');
+        
+        console.log('🚀 Iniciando envío a Excel con:', solicitud);
+
+        const response = await this.enviarAlExcel(solicitud);
+        
+        console.log('📨 Respuesta completa:', JSON.stringify(response, null, 2));
+        
+        if (response.success) {
+            console.log('✅ Proceso exitoso');
+            await step.context.sendActivity('✅ <b>¡Solicitud creada exitosamente!</b>\n\n📧 Equipo notificado\n🎉 Proceso completado');
+            
+            // Mostrar datos adicionales si están disponibles
+            if (response.data && response.data.mensaje) {
+                await step.context.sendActivity(`📋 Estado: ${response.data.mensaje}`);
+            }
+        } else {
+            console.log('❌ Proceso falló:', response.message);
+            throw new Error(response.message || 'Error desconocido');
         }
 
-        return await step.endDialog(solicitudCompleta);
+    } catch (error) {
+        console.error('❌ Error al enviar:', error.message);
+        console.error('❌ Stack completo:', error.stack);
+        await step.context.sendActivity(`❌ Error al guardar la solicitud: ${error.message}`);
     }
 
-    // Métodos de validación y extracción
-    extraerDatosBasicos(texto) {
-        const patrones = {
-            // Campos obligatorios
-            cliente: /cliente:\s*(.+)/i,
-            perfil: /perfil:\s*(.+)/i,
-            prioridad: /prioridad:\s*(.+)/i,
-            ciudad: /ciudad:\s*(.+)/i,
-            // Campos opcionales
-            clienteSolvo: /cliente\s+solvo:\s*(.+)/i,
-            fechaSolicitud: /fecha\s+solicitud:\s*(.+)/i,
-            lab: /lab:\s*(.+)/i,
-            rangoSalarial: /rango\s+salarial:\s*(.+)/i
-        };
-
-        return Object.fromEntries(
-            Object.entries(patrones)
-                .map(([campo, patron]) => {
-                    const match = texto?.match(patron);
-                    return [campo, match ? match[1].trim() : ''];
-                })
-        );
-    }
-
-    validarDatosBasicos(datos) {
-        return datos.cliente && datos.perfil && datos.prioridad && datos.ciudad;
-    }
-
-    // Métodos de mensajes
-  getMensajeDatosBasicos() {
-    return ` <br>📋 <b>REGISTRO DE SOLICITUD</b><br><br>Por favor, proporciona la información:<br><br><b>CAMPOS OBLIGATORIOS:</b><br><b>Cliente:</b> <br><b>Perfil:</b><br><b>Prioridad:</b><br><b>Ciudad:</b><br><br><b>CAMPOS OPCIONALES:</b><br><b>Cliente Solvo:</b><br><b>Fecha Solicitud:</b> [DD/MM/YYYY]<br><b>Lab:</b><br><b>Rango Salarial:</b><br><br><b><hr>✍️ <b>Escribe la información ahora:</b><br><br>`;
-}
-
-getMensajeFormatoIncorrecto() {
-    return `<br>❌ <b>Faltan campos obligatorios</b><br><br><b>Cliente:</b> <br><b>Perfil:</b><br><b>Prioridad:</b><br><b>Ciudad:</b><br><br>Los campos opcionales pueden omitirse:<br><b>Cliente Solvo:</b> [si aplica]<br><b>Fecha Solicitud:</b> [DD/MM/YYYY]<br><b>Lab:</b><br><b>Rango Salarial:</b><br><br>`;
-}
-
-getResumenDatosBasicos(datos) {
-    console.log('Datos recibidos:', datos);
-    
-    // Verificar que el objeto datos existe y tiene las propiedades necesarias
-    if (!datos || typeof datos !== 'object') {
-        return `<br>❌ <b>Error:</b> Datos no válidos`; 
-    }
-
-    let resumen = `<br>✅ <b>Datos registrados:</b><br><br><b>OBLIGATORIOS:</b><br>👤 <b>Cliente:</b> ${datos.cliente || 'No especificado'}<br>💼 <b>Perfil:</b> ${datos.perfil || 'No especificado'}<br>⚡ <b>Prioridad:</b> ${datos.prioridad || 'No especificado'}<br>🌍 <b>Ciudad:</b> ${datos.ciudad || 'No especificado'}`;
-
-    // Agregar campos opcionales solo si tienen valor
-    const opcionales = [];
-    if (datos.clienteSolvo) opcionales.push(`👥 <b>Cliente Solvo:</b> ${datos.clienteSolvo}`);
-    if (datos.fechaSolicitud) opcionales.push(`📅 <b>Fecha Solicitud:</b> ${datos.fechaSolicitud}`);
-    if (datos.lab) opcionales.push(`🔬 <b>Lab:</b> ${datos.lab}`);
-    if (datos.rangoSalarial) opcionales.push(`💰 <b>Rango Salarial:</b> ${datos.rangoSalarial}`);
-
-    if (opcionales.length > 0) {
-        resumen += `<br><br><b>OPCIONALES:</b><br>${opcionales.join('<br>')}`;
-    }
-
-    return resumen;
+    return await step.endDialog();
 }
 
 
-
-    getMensajeSkills() {
-         return `<br>🛠️ <b>AHORA LAS SKILLS</b><br><br>Describe las habilidades técnicas requeridas:<br><br><b>Ejemplos:</b><br><blockquote>- "React, TypeScript y experiencia en APIs REST"<br>- "Python, Django, PostgreSQL y Docker"<br>- "JavaScript, Node.js, React, bases de datos y AWS"</blockquote><hr>✍️ <b>Describe las skills requeridas:</b><br><br>`;
-    }
-
-    getMensajeExito(solicitud, skillsProcesadas) {
-        return `<br>✅ <b>Solicitud registrada exitosamente</b><br><br>📋 <b>RESUMEN COMPLETO:</b><br>👤 <b>Cliente:</b> ${solicitud.cliente}<br>💼 <b>Perfil:</b> ${solicitud.perfil}<br>⚡ <b>Prioridad:</b> ${solicitud.prioridad}<br>🌍 <b>Ciudad:</b> ${solicitud.ciudad}<br>📅 <b>Fecha:</b> ${solicitud.fecha}<br><br>🛠️ <b>Skills organizadas:</b><br><blockquote>${skillsProcesadas}</blockquote><br>La solicitud ha sido enviada al equipo de reclutamiento.<br><br>`;
-    }
-
-
-    getMensajeExitoSinIA(solicitud) {
-        return `<br>✅ <b>Solicitud registrada</b> (Sin procesamiento IA)<br><br>📋 <b>RESUMEN:</b><br>👤 <b>Cliente:</b> ${solicitud.cliente}<br>💼 <b>Perfil:</b> ${solicitud.perfil}<br>⚡ <b>Prioridad:</b> ${solicitud.prioridad}<br>🌍 <b>Ciudad:</b> ${solicitud.ciudad}<br>🛠️ <b>Skills:</b> ${solicitud.skillsOriginales}<br><br>⚠️ Las skills no pudieron procesarse con IA, pero la solicitud fue registrada.<br><br>`;
-    }
-
-    // Procesamiento con IA
-    async procesarConIA(solicitud) {
-        const N8N_WEBHOOK_URL = 'https://n8n-esencia-suite.zntoks.easypanel.host/webhook-test/simulacion-bot';
+    // 🔍 Extraer datos del texto - SIMPLIFICADO Y FUNCIONAL
+    extraerDatos(texto) {
+        const datos = {};
         
-        const payload = {
-            // Campos obligatorios
-            cliente: solicitud.cliente,
-            perfil: solicitud.perfil,
-            prioridad: solicitud.prioridad,
-            ciudad: solicitud.ciudad,
-            skillsOriginales: solicitud.skillsOriginales,
-            fecha: solicitud.fecha,
-            // Campos opcionales (vacíos si no se proporcionan)
-            clienteSolvo: solicitud.clienteSolvo || '',
-            fechaSolicitud: solicitud.fechaSolicitud || '',
-            lab: solicitud.lab || '',
-            rangoSalarial: solicitud.rangoSalarial || ''
+        // Método simple: buscar cada campo individualmente
+        const extracciones = [
+            { key: 'cliente', pattern: 'Cliente:' },
+            { key: 'usuarioSolicita', pattern: 'Usuario Solicita:' },
+            { key: 'origen', pattern: 'Origen:' },
+            { key: 'perfil', pattern: 'Perfil:' },
+            { key: 'prioridad', pattern: 'Prioridad:' },
+            { key: 'ciudad', pattern: 'Ciudad:' },
+            { key: 'skills', pattern: 'Skills:' }
+        ];
+
+        for (let i = 0; i < extracciones.length; i++) {
+            const actual = extracciones[i];
+            const siguiente = extracciones[i + 1];
+            
+            const inicioIndex = texto.indexOf(actual.pattern);
+            if (inicioIndex !== -1) {
+                const inicioValor = inicioIndex + actual.pattern.length;
+                let finValor;
+                
+                if (siguiente) {
+                    // Buscar el siguiente campo
+                    finValor = texto.indexOf(siguiente.pattern, inicioValor);
+                    if (finValor === -1) finValor = texto.length;
+                } else {
+                    // Es el último campo (skills), tomar todo lo que resta
+                    finValor = texto.length;
+                }
+                
+                let valor = texto.substring(inicioValor, finValor).trim();
+                
+                // Para campos que no son skills, limpiar si es muy largo
+                if (actual.key !== 'skills' && valor.length > 50) {
+                    // Tomar solo hasta el primer espacio después de 30 caracteres
+                    const espacioIndex = valor.indexOf(' ', 30);
+                    if (espacioIndex > 0) {
+                        valor = valor.substring(0, espacioIndex);
+                    }
+                }
+                
+                datos[actual.key] = valor;
+            }
+        }
+
+        console.log('🔍 Datos extraídos:', datos);
+        return datos;
+    }
+
+
+
+    // ✅ Validar datos obligatorios
+    validarDatos(datos) {
+        const obligatorios = {
+            cliente: 'Cliente',
+            usuarioSolicita: 'Usuario Solicita', 
+            origen: 'Origen',
+            perfil: 'Perfil',
+            prioridad: 'Prioridad',
+            ciudad: 'Ciudad',
+            skills: 'Skills'
         };
 
-        console.log('📤 Enviando a n8n:', payload);
+        const errores = [];
+        
+        for (const [key, label] of Object.entries(obligatorios)) {
+            if (!datos[key]) {
+                errores.push(`• ${label}`);
+            }
+        }
 
-        const response = await axios.post(N8N_WEBHOOK_URL, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 10000
-        });
-
-        console.log('📥 Respuesta de n8n:', response.data);
-        return response.data.skillsOrganizadas || response.data.skills || solicitud.skillsOriginales;
+        return errores;
     }
+
+    async procesarConIA(step, datos) {
+    try {
+        await step.context.sendActivity('🤖 Analizando con IA...\n⏳ Procesando...');
+
+        const response = await axios.post(
+            'https://n8n-esencia-suite.zntoks.easypanel.host/webhook-test/simulacion-bot',
+            datos,
+            { 
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 45000
+            }
+        );
+
+        console.log('✅ Respuesta completa de n8n:', JSON.stringify(response.data, null, 2));
+
+        return {
+            ...datos,
+            skillsOriginales: datos.skills,
+            skillsIA: response.data?.skillsOrganizadas || response.data?.skills || datos.skills,
+            procesamientoExitoso: true,
+            respuestaN8N: response.data // ✅ GUARDAR TODA LA RESPUESTA AQUÍ
+        };
+
+    } catch (error) {
+        console.error('❌ Error IA:', error.message);
+        
+        await step.context.sendActivity('⚠️ IA no disponible, continuando...');
+        
+        return {
+            ...datos,
+            skillsOriginales: datos.skills,
+            skillsIA: datos.skills,
+            procesamientoExitoso: false,
+            errorIA: error.message
+        };
+    }
+}
+
+
+            // 📋 Generar resumen final - VERSIÓN CORREGIDA
+generarResumen(solicitud) {
+    let mensaje = `
+<b>📋 SOLICITUD PROCESADA</b>
+
+<b>INFORMACIÓN BÁSICA:</b>
+👤 Cliente: ${solicitud.cliente}
+👨‍💼 Solicitante: ${solicitud.usuarioSolicita}
+🌐 Origen: ${solicitud.origen}
+💼 Perfil: ${solicitud.perfil}  
+⚡ Prioridad: ${solicitud.prioridad}
+🌍 Ciudad: ${solicitud.ciudad}
+    `;
+
+    // Campos opcionales
+    if (solicitud.salario) mensaje += `\n💰 Salario: ${solicitud.salario}`;
+    if (solicitud.lab) mensaje += `\n🔬 Lab: ${solicitud.lab}`;
+
+    // ✅ USAR DATOS ORGANIZADOS DE N8N
+    if (solicitud.procesamientoExitoso && solicitud.respuestaN8N?.mensaje) {
+        const mensajeLimpio = solicitud.respuestaN8N.mensaje;
+        
+        // Extraer secciones organizadas
+        const responsabilidadesMatch = mensajeLimpio.match(/🧰 Responsabilidades \(\d+\):(.*?)(?=📌|💻|🎯|💾|$)/s);
+        const requisitosMatch = mensajeLimpio.match(/📌 Requisitos \(\d+\):(.*?)(?=💻|🎯|💾|$)/s);
+        const tecnologiasMatch = mensajeLimpio.match(/💻 Tecnologías \(\d+\):(.*?)(?=🎯|💾|$)/s);
+        
+        mensaje += `\n\n<b>🤖 ANÁLISIS POR IA:</b>`;
+        
+        if (responsabilidadesMatch) {
+            mensaje += `\n\n<b>🧰 RESPONSABILIDADES:</b>${responsabilidadesMatch[1].trim()}`;
+        }
+        
+        if (requisitosMatch) {
+            mensaje += `\n\n<b>📌 REQUISITOS:</b>${requisitosMatch[1].trim()}`;
+        }
+        
+        if (tecnologiasMatch) {
+            mensaje += `\n\n<b>💻 TECNOLOGÍAS:</b>${tecnologiasMatch[1].trim()}`;
+        }
+        
+    } else {
+        // Fallback simple
+        mensaje += `\n\n<b>💻 SKILLS:</b>\n${solicitud.skills}`;
+    }
+
+    return mensaje;
+}
+
 }
 
 module.exports.SolicitudDialog = SolicitudDialog;
