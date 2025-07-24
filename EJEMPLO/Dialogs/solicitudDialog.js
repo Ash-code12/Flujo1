@@ -21,28 +21,13 @@ class SolicitudDialog extends ComponentDialog {
     // 📝 PASO 1: Solicitar datos
     async pedirDatos(step) {
         const mensaje = `
-📋 <b>NUEVA SOLICITUD</b>
-
-Por favor, proporciona la siguiente información:
-
-<b>CAMPOS OBLIGATORIOS:</b>
-• <b>Cliente:</b> 
-• <b>Usuario Solicita:</b> 
-• <b>Origen:</b> [USA/COL]
-• <b>Perfil:</b> 
-• <b>Prioridad:</b> [Alta/Media/Baja]
-• <b>Ciudad:</b> 
-• <b>Skills:</b> 
-
-<b>CAMPOS OPCIONALES:</b>
-• <b>Salario:</b> 
-• <b>Lab:</b> 
+<br>📋 <b>NUEVA SOLICITUD</b><br><br>Por favor, proporciona la información:<br><br><b>CAMPOS OBLIGATORIOS:</b><br><b>Cliente:</b><br> <b>Usuario Solicita:</b><br><b>Origen:USA/COL</b> <br><b>Tipo Perfil:</b><br><b>Prioridad:(Alta,Media, Baja)</b><br><b>Ciudad:</b> <br><b>Skills:</b><br><br><b>CAMPOS OPCIONALES:</b><br><b>Cliente Solvo:</b><br><b>Lab:</b><br><b>Rango Salarial:</b><br><br><b><hr>✍️ <b>Escribe la información ahora:</b><br><br></body>
 
 <b>Ejemplo:</b>
 Cliente: TechCorp
 Usuario Solicita: Juan Pérez  
 Origen: COL
-Perfil: Developer Full Stack
+Tipo Perfil: Developer Full Stack
 Prioridad: Alta
 Ciudad: Bogotá
 Skills: React, Node.js, PostgreSQL
@@ -124,7 +109,7 @@ Salario: $8M - $12M
             { key: 'cliente', pattern: 'Cliente:' },
             { key: 'usuarioSolicita', pattern: 'Usuario Solicita:' },
             { key: 'origen', pattern: 'Origen:' },
-            { key: 'perfil', pattern: 'Perfil:' },
+            { key: 'tipoPerfil', pattern: 'Tipo Perfil:' },
             { key: 'prioridad', pattern: 'Prioridad:' },
             { key: 'ciudad', pattern: 'Ciudad:' },
             { key: 'skills', pattern: 'Skills:' }
@@ -175,7 +160,7 @@ Salario: $8M - $12M
             cliente: 'Cliente',
             usuarioSolicita: 'Usuario Solicita', 
             origen: 'Origen',
-            perfil: 'Perfil',
+            tipoPerfil: 'Tipo Perfil',
             prioridad: 'Prioridad',
             ciudad: 'Ciudad',
             skills: 'Skills'
@@ -240,7 +225,7 @@ generarResumen(solicitud) {
 👤 Cliente: ${solicitud.cliente}
 👨‍💼 Solicitante: ${solicitud.usuarioSolicita}
 🌐 Origen: ${solicitud.origen}
-💼 Perfil: ${solicitud.perfil}  
+💼 Tipo Perfil: ${solicitud.tipoPerfil}  
 ⚡ Prioridad: ${solicitud.prioridad}
 🌍 Ciudad: ${solicitud.ciudad}
     `;
