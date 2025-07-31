@@ -1,4 +1,6 @@
-const {WaterfallDialog, ComponentDialog, DialogSet, DialogTurnStatus, Dialog } = require('botbuilder-dialogs');
+
+//Librerías:
+const {WaterfallDialog, ComponentDialog, DialogSet, DialogTurnStatus, Dialog } = require('botbuilder-dialogs'); //Maneja una conversación en un bot
 
 //Tipos de dialogos para recolectar diferentes tipos de datos
 const { ChoicePrompt, TextPrompt, DateTimePrompt, ConfirmPrompt, NumberPrompt, AttachmentPrompt } = require('botbuilder-dialogs');
@@ -6,7 +8,7 @@ const { ChoicePrompt, TextPrompt, DateTimePrompt, ConfirmPrompt, NumberPrompt, A
 const axios = require('axios');  //Envía datos al webhook
 const { CardFactory } = require('botbuilder');  //Crea tarjetas adaptativas
 
-//Constantes
+//Constantes(Identificadores para distintos tipos de preguntas)
 const CHOICE_PROMPT         = 'CHOICE_PROMPT';   
 const CONFIRM_PROMPT        = 'CONFIRM_PROMPT';  
 const TEXT_PROMPT           = 'TEXT_PROMPT';     
@@ -21,6 +23,7 @@ class ValidacionDialog extends ComponentDialog{
     constructor(conversationState,userState){
         super('validacionDialog'); //Nombre al dialogo
 
+        //Registrar los tipos de entrada
         this.addDialog(new TextPrompt(TEXT_PROMPT));
         this.addDialog(new ChoicePrompt(CHOICE_PROMPT));
         this.addDialog(new ConfirmPrompt(CONFIRM_PROMPT));
@@ -35,7 +38,7 @@ class ValidacionDialog extends ComponentDialog{
             this.sendToWebHook.bind(this)   //Envio de informacion a n8n
         ]));
 
-        this.initialDialogId = WATERFALL_DIALOG;
+        this.initialDialogId = WATERFALL_DIALOG; // Indica al bot que el flujo es el primero que se ejecuta
     }
 
 
@@ -97,8 +100,8 @@ class ValidacionDialog extends ComponentDialog{
         console.log("MENSAJE DEL USUARIO en WEBHOOK (pregunta) "+ step.values.userMessage);
 
         if(step.values.tipoPregunta === 'validar'){step.values.attachment = step.result};
-
-        const context = step.context;  //Si hay adjunto se guarda
+                                                //Guarda el archivo adjunto
+        const context = step.context;  //Contexto del bot (Quién es el usuario, qué se recibió, donde se está chateando)
         const webhookUrl = process.env.Vitae_n8n;      // CAMBIAR POR URL VALIDA
         
         const userMessage = step.values.userMessage;
@@ -124,15 +127,17 @@ class ValidacionDialog extends ComponentDialog{
                 // Verificar si hay archivos adjuntos
         if (context.activity.attachments && context.activity.attachments.length > 0) {
             for (const attachment of context.activity.attachments) {
-                let fileUrl = '';
-                let fileName = attachment.name || 'archivo-sin-nombre';
-
+                let fileUrl = ''; //enlace para descargar el archivo
+                let fileName = attachment.name || 'archivo-sin-nombre'; 
+                
+                //De donde obtener el enlace del archivo
                 if (attachment.contentType === 'application/vnd.microsoft.teams.file.download.info' && attachment.content && attachment.content.downloadUrl) {
                     fileUrl = attachment.content.downloadUrl;
                 } else {
                     fileUrl = attachment.contentUrl;
                 }
                 
+                //Agrega un objeto con los datos del archivo al arreglo payload
                 payload.attachments.push({
                     name: fileName,
                     contentUrl: fileUrl,

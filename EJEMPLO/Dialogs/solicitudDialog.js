@@ -1,270 +1,146 @@
-const { ComponentDialog, WaterfallDialog, Dialog } = require('botbuilder-dialogs');
+const {WaterfallDialog, ComponentDialog, DialogSet, DialogTurnStatus, Dialog } = require('botbuilder-dialogs');
+const { ChoicePrompt, TextPrompt, DateTimePrompt, ConfirmPrompt, NumberPrompt, AttachmentPrompt } = require('botbuilder-dialogs');
 const axios = require('axios');
+const { CardFactory } = require('botbuilder');
 
-const SOLICITUD_DIALOG = 'solicitudDialog';
-const WATERFALL_DIALOG = 'waterfallDialog';
+const CHOICE_PROMPT         = 'CHOICE_PROMPT';
+const CONFIRM_PROMPT        = 'CONFIRM_PROMPT';
+const TEXT_PROMPT           = 'TEXT_PROMPT';
+const NUMBER_PROMPT         = 'NUMBER_PROMPT';
+const DATETIME_PROMPT       = 'DATETIME_PROMPT';
+const WATERFALL_DIALOG      = 'WATERFALL_DIALOG';
+const FILE_PROMPT           = 'FILE_PROMPT';
+var endDialog               = '';
 
 class SolicitudDialog extends ComponentDialog {
-    constructor(conversationState) {
-        super(SOLICITUD_DIALOG);
-        this.conversationDataAccessor = conversationState.createProperty('conversationData');
-        
+    constructor(conversationState,userState){
+        super('solicitudDialog');
+
+        this.addDialog(new TextPrompt(TEXT_PROMPT));
+        this.addDialog(new ChoicePrompt(CHOICE_PROMPT));
+        this.addDialog(new ConfirmPrompt(CONFIRM_PROMPT));
+        this.addDialog(new NumberPrompt(NUMBER_PROMPT));      
+        this.addDialog(new DateTimePrompt(DATETIME_PROMPT));
+        this.addDialog(new AttachmentPrompt(FILE_PROMPT));
+
         this.addDialog(new WaterfallDialog(WATERFALL_DIALOG, [
-            this.pedirDatos.bind(this),
-            this.procesarSolicitud.bind(this),
-            this.finalizarProceso.bind(this)
+            this.firstStep.bind(this),
+            this.secondStep.bind(this),
+            this.thirdStep.bind(this),
+            this.fourthStep.bind(this)
         ]));
 
         this.initialDialogId = WATERFALL_DIALOG;
     }
 
-    // 📝 PASO 1: Solicitar datos
-    async pedirDatos(step) {
-        const mensaje = `
-<br>📋 <b>NUEVA SOLICITUD</b><br><br>Por favor, proporciona la información:<br><br><b>CAMPOS OBLIGATORIOS:</b><br><b>Cliente:</b><br> <b>Usuario Solicita:</b><br><b>Origen:USA/COL</b> <br><b>Tipo Perfil:</b><br><b>Prioridad:(Alta,Media, Baja)</b><br><b>Ciudad:</b> <br><b>Skills:</b><br><br><b>CAMPOS OPCIONALES:</b><br><b>Cliente Solvo:</b><br><b>Lab:</b><br><b>Rango Salarial:</b><br><br><b><hr>✍️ <b>Escribe la información ahora:</b><br><br></body>
-
-<b>Ejemplo:</b>
-Cliente: TechCorp
-Usuario Solicita: Juan Pérez  
-Origen: COL
-Tipo Perfil: Developer Full Stack
-Prioridad: Alta
-Ciudad: Bogotá
-Skills: React, Node.js, PostgreSQL
-Salario: $8M - $12M
-        `;
+    async firstStep(step) {
+        console.log("Primer Paso Solicitud Dialog");
+        step.values.haraPregunta = 'si';
         
-        await step.context.sendActivity(mensaje);
-        return Dialog.EndOfTurn;
+        const instructivo = 
+            "🚀 <b>Bot de Registro de Solicitudes</b><br><br>" +
+            "📝 Registra solicitudes en Excel <b>DT_Solicitudes2025</b><br>" +
+            "La IA organiza automáticamente la información de Skills<br>" +
+            "Puedes ingresar campos opcionales: Cliente Solvo, Lab, Rango Salarial<br>";
+
+        await step.context.sendActivity(instructivo);
+
+        return await step.prompt(TEXT_PROMPT, 
+            "📝 <b>Ingresa los campos:</b><br>" +
+            "Cliente:<br>" +
+            "Origen Solicitud: USA o COL<br>" +
+            "Usuario Solicita: <br>" +
+            "Tipo Perfil: <br>" +
+            "Prioridad: [alta/media/baja]<br>" +
+            "Ciudad: ", 
+            { retryPrompt:"❌ No entendí. Intenta de nuevo." });
     }
 
-    // 🚀 PASO 2: Procesar con IA y mostrar resultado
-    async procesarSolicitud(step) {
-        const datos = this.extraerDatos(step.context.activity.text);
-        
-        // Auto-completar usuario si no se proporciona
-        if (!datos.usuarioSolicita) {
-            datos.usuarioSolicita = step.context.activity.from?.name || 'Usuario Bot';
-        }
-
-        // Validar campos obligatorios
-        const errores = this.validarDatos(datos);
-        if (errores.length > 0) {
-            await step.context.sendActivity(`❌ <b>Faltan datos:</b>\n${errores.join('\n')}`);
-            return await step.endDialog();
-        }
-
-        // Procesar con IA
-        const solicitudProcesada = await this.procesarConIA(step, datos);
-        step.values.solicitud = solicitudProcesada;
-
-        // Mostrar resultado
-        await step.context.sendActivity(this.generarResumen(solicitudProcesada));
-        
-        return Dialog.EndOfTurn;
-    }
-
-    // 📤 PASO 3: Enviar al Excel
-    async finalizarProceso(step) {
-    const solicitud = step.values.solicitud;
-
-    try {
-        await step.context.sendActivity('📤 Enviando al sistema...');
-        
-        console.log('🚀 Iniciando envío a Excel con:', solicitud);
-
-        const response = await this.enviarAlExcel(solicitud);
-        
-        console.log('📨 Respuesta completa:', JSON.stringify(response, null, 2));
-        
-        if (response.success) {
-            console.log('✅ Proceso exitoso');
-            await step.context.sendActivity('✅ <b>¡Solicitud creada exitosamente!</b>\n\n📧 Equipo notificado\n🎉 Proceso completado');
-            
-            // Mostrar datos adicionales si están disponibles
-            if (response.data && response.data.mensaje) {
-                await step.context.sendActivity(`📋 Estado: ${response.data.mensaje}`);
-            }
-        } else {
-            console.log('❌ Proceso falló:', response.message);
-            throw new Error(response.message || 'Error desconocido');
-        }
-
-    } catch (error) {
-        console.error('❌ Error al enviar:', error.message);
-        console.error('❌ Stack completo:', error.stack);
-        await step.context.sendActivity(`❌ Error al guardar la solicitud: ${error.message}`);
-    }
-
-    return await step.endDialog();
-}
-
-
-    // 🔍 Extraer datos del texto - SIMPLIFICADO Y FUNCIONAL
-    extraerDatos(texto) {
-        const datos = {};
-        
-        // Método simple: buscar cada campo individualmente
-        const extracciones = [
-            { key: 'cliente', pattern: 'Cliente:' },
-            { key: 'usuarioSolicita', pattern: 'Usuario Solicita:' },
-            { key: 'origen', pattern: 'Origen:' },
-            { key: 'tipoPerfil', pattern: 'Tipo Perfil:' },
-            { key: 'prioridad', pattern: 'Prioridad:' },
-            { key: 'ciudad', pattern: 'Ciudad:' },
-            { key: 'skills', pattern: 'Skills:' }
+    async secondStep(step) {
+        console.log("Segundo Paso Solicitud Dialog");
+        console.log("Resultado STEP -->", step.result);
+    
+        const userInput = step.result || '';
+        const camposObligatorios = [
+            'Cliente',
+            'Origen Solicitud', 
+            'Usuario Solicita',
+            'Tipo Perfil',
+            'Prioridad',
+            'Ciudad'
         ];
-
-        for (let i = 0; i < extracciones.length; i++) {
-            const actual = extracciones[i];
-            const siguiente = extracciones[i + 1];
-            
-            const inicioIndex = texto.indexOf(actual.pattern);
-            if (inicioIndex !== -1) {
-                const inicioValor = inicioIndex + actual.pattern.length;
-                let finValor;
-                
-                if (siguiente) {
-                    // Buscar el siguiente campo
-                    finValor = texto.indexOf(siguiente.pattern, inicioValor);
-                    if (finValor === -1) finValor = texto.length;
-                } else {
-                    // Es el último campo (skills), tomar todo lo que resta
-                    finValor = texto.length;
-                }
-                
-                let valor = texto.substring(inicioValor, finValor).trim();
-                
-                // Para campos que no son skills, limpiar si es muy largo
-                if (actual.key !== 'skills' && valor.length > 50) {
-                    // Tomar solo hasta el primer espacio después de 30 caracteres
-                    const espacioIndex = valor.indexOf(' ', 30);
-                    if (espacioIndex > 0) {
-                        valor = valor.substring(0, espacioIndex);
-                    }
-                }
-                
-                datos[actual.key] = valor;
-            }
-        }
-
-        console.log('🔍 Datos extraídos:', datos);
-        return datos;
-    }
-
-
-
-    // ✅ Validar datos obligatorios
-    validarDatos(datos) {
-        const obligatorios = {
-            cliente: 'Cliente',
-            usuarioSolicita: 'Usuario Solicita', 
-            origen: 'Origen',
-            tipoPerfil: 'Tipo Perfil',
-            prioridad: 'Prioridad',
-            ciudad: 'Ciudad',
-            skills: 'Skills'
-        };
-
-        const errores = [];
         
-        for (const [key, label] of Object.entries(obligatorios)) {
-            if (!datos[key]) {
-                errores.push(`• ${label}`);
-            }
-        }
-
-        return errores;
-    }
-
-    async procesarConIA(step, datos) {
-    try {
-        await step.context.sendActivity('🤖 Analizando con IA...\n⏳ Procesando...');
-
-        const response = await axios.post(
-            'https://n8n-esencia-suite.zntoks.easypanel.host/webhook-test/simulacion-bot',
-            datos,
-            { 
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 45000
-            }
+        const faltantes = camposObligatorios.filter(campo => 
+            !userInput.toLowerCase().includes(campo.toLowerCase())
         );
 
-        console.log('✅ Respuesta completa de n8n:', JSON.stringify(response.data, null, 2));
-
-        return {
-            ...datos,
-            skillsOriginales: datos.skills,
-            skillsIA: response.data?.skillsOrganizadas || response.data?.skills || datos.skills,
-            procesamientoExitoso: true,
-            respuestaN8N: response.data // ✅ GUARDAR TODA LA RESPUESTA AQUÍ
-        };
-
-    } catch (error) {
-        console.error('❌ Error IA:', error.message);
-        
-        await step.context.sendActivity('⚠️ IA no disponible, continuando...');
-        
-        return {
-            ...datos,
-            skillsOriginales: datos.skills,
-            skillsIA: datos.skills,
-            procesamientoExitoso: false,
-            errorIA: error.message
-        };
-    }
-}
-
-
-            // 📋 Generar resumen final - VERSIÓN CORREGIDA
-generarResumen(solicitud) {
-    let mensaje = `
-<b>📋 SOLICITUD PROCESADA</b>
-
-<b>INFORMACIÓN BÁSICA:</b>
-👤 Cliente: ${solicitud.cliente}
-👨‍💼 Solicitante: ${solicitud.usuarioSolicita}
-🌐 Origen: ${solicitud.origen}
-💼 Tipo Perfil: ${solicitud.tipoPerfil}  
-⚡ Prioridad: ${solicitud.prioridad}
-🌍 Ciudad: ${solicitud.ciudad}
-    `;
-
-    // Campos opcionales
-    if (solicitud.salario) mensaje += `\n💰 Salario: ${solicitud.salario}`;
-    if (solicitud.lab) mensaje += `\n🔬 Lab: ${solicitud.lab}`;
-
-    // ✅ USAR DATOS ORGANIZADOS DE N8N
-    if (solicitud.procesamientoExitoso && solicitud.respuestaN8N?.mensaje) {
-        const mensajeLimpio = solicitud.respuestaN8N.mensaje;
-        
-        // Extraer secciones organizadas
-        const responsabilidadesMatch = mensajeLimpio.match(/🧰 Responsabilidades \(\d+\):(.*?)(?=📌|💻|🎯|💾|$)/s);
-        const requisitosMatch = mensajeLimpio.match(/📌 Requisitos \(\d+\):(.*?)(?=💻|🎯|💾|$)/s);
-        const tecnologiasMatch = mensajeLimpio.match(/💻 Tecnologías \(\d+\):(.*?)(?=🎯|💾|$)/s);
-        
-        mensaje += `\n\n<b>🤖 ANÁLISIS POR IA:</b>`;
-        
-        if (responsabilidadesMatch) {
-            mensaje += `\n\n<b>🧰 RESPONSABILIDADES:</b>${responsabilidadesMatch[1].trim()}`;
+        if (faltantes.length > 0) { 
+            return await step.prompt(TEXT_PROMPT, 
+                `⚠️ <b>Faltan campos obligatorios:</b> ${faltantes.join(', ')}<br><br>Por favor ingrese los campos faltantes en formato: <b>Campo: Valor</b>`, 
+                { retryPrompt: "Por favor, ingrese los campos en el formato correcto." }
+            );
         }
         
-        if (requisitosMatch) {
-            mensaje += `\n\n<b>📌 REQUISITOS:</b>${requisitosMatch[1].trim()}`;
-        }
-        
-        if (tecnologiasMatch) {
-            mensaje += `\n\n<b>💻 TECNOLOGÍAS:</b>${tecnologiasMatch[1].trim()}`;
-        }
-        
-    } else {
-        // Fallback simple
-        mensaje += `\n\n<b>💻 SKILLS:</b>\n${solicitud.skills}`;
+        step.values.todosLosCampos = userInput;
+        return await step.next();
     }
 
-    return mensaje;
-}
+    async thirdStep(step) {
+        console.log("Tercer Paso - Skills Dialog");
+        console.log("Resultado STEP -->", step.result);
 
+        if (step.result && !step.values.todosLosCampos) {
+            step.values.todosLosCampos = step.result;
+        }
+
+        return await step.prompt(TEXT_PROMPT, 
+            "🎯 <b>Ingresa información de Skills:</b><br>" +
+            "Responsabilidades, requisitos, tecnologías, experiencia, etc.",
+            { retryPrompt: "❌ Por favor ingresa la información de Skills." }
+        );
+    }
+
+    async fourthStep(step) {
+        console.log("Cuarto Paso - Procesamiento Final");
+        console.log("Resultado STEP -->", step.result);
+
+        step.values.skillsInfo = step.result;
+
+        const datosParaEnvio = {
+            campos: step.values.todosLosCampos,
+            tipoSkills: 'manual', // Siempre manual ahora
+            skillsInfo: step.values.skillsInfo,
+            fechaCreacion: new Date().toISOString()
+        };
+
+        await step.context.sendActivity("⏳ <b>Procesando por favor espera un momento...</b>");
+
+        try {
+            const response = await axios.post('https://n8n-esencia-suite.zntoks.easypanel.host/webhook/simulacion-bot', datosParaEnvio, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (response.status === 200) {
+                await step.context.sendActivity({
+                    type: 'message',
+                    text: response.data.mensaje,
+                    textFormat: 'xml'
+                });
+                
+                if (response.data.idSolicitud) {
+                    await step.context.sendActivity(`📋 <b>ID de Solicitud:</b> ${response.data.idSolicitud}`);
+                }
+            } else {
+                await step.context.sendActivity("❌ <b>Error al procesar la solicitud.</b><br>Por favor intente nuevamente.");
+            }
+
+        } catch (error) {
+            console.error("Error enviando a n8n:", error);
+            await step.context.sendActivity("❌ <b>Error de conexión.</b><br>Por favor intente más tarde.");
+        }
+        
+        return await step.endDialog();
+    }
 }
 
 module.exports.SolicitudDialog = SolicitudDialog;

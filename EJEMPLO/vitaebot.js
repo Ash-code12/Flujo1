@@ -23,10 +23,7 @@ class VitaeBot extends ActivityHandler {
         this.dialogs.add(new VitaeDialog("vitaeDialog"));
         this.dialogs.add(new CandidatoDialog("candidatoDialog"));
         this.dialogs.add(new ValidacionDialog("validacionDialog"));
-        const dialogs = new DialogSet(this.dialogState);
-        dialogs.add(new SolicitudDialog(conversationState));
-
-        this.dialogs = dialogs;
+        this.dialogs.add(new SolicitudDialog("solicitudDialog"));
 
         // Informacion del usuario guardada
         this.onDialog(async (context, next) => {
