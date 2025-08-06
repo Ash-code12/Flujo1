@@ -13,7 +13,7 @@ const FILE_PROMPT           = 'FILE_PROMPT';
 var endDialog               = '';
 
 class SolicitudDialog extends ComponentDialog {
-    constructor(conversationState,userState){
+    constructor(conversationState, userState){
         super('solicitudDialog');
 
         this.addDialog(new TextPrompt(TEXT_PROMPT));
@@ -37,22 +37,27 @@ class SolicitudDialog extends ComponentDialog {
         console.log("Primer Paso Solicitud Dialog");
         step.values.haraPregunta = 'si';
         
+        // Declarar la variable antes de usarla
         const instructivo = 
-            "🚀 <b>Bot de Registro de Solicitudes</b><br><br>" +
+            "<br>🚀 <b>Bot de Registro de Solicitudes</b><br><br>" +
             "📝 Registra solicitudes en Excel <b>DT_Solicitudes2025</b><br>" +
-            "La IA organiza automáticamente la información de Skills<br>" +
-            "Puedes ingresar campos opcionales: Cliente Solvo, Lab, Rango Salarial<br>";
+            "La IA organiza automáticamente la información de Skills<br>";
 
         await step.context.sendActivity(instructivo);
 
         return await step.prompt(TEXT_PROMPT, 
-            "📝 <b>Ingresa los campos:</b><br>" +
+            "<br>📝 <b>Ingresa los campos:</b><br>" +
             "Cliente:<br>" +
             "Origen Solicitud: USA o COL<br>" +
             "Usuario Solicita: <br>" +
             "Tipo Perfil: <br>" +
             "Prioridad: [alta/media/baja]<br>" +
-            "Ciudad: ", 
+            "Ciudad: <br>"+ 
+            "<hr>Puedes ingresar campos opcionales: <br></hr>"+
+            "Cliente Solvo: <br>" +
+            "Lab: <br>" +
+            "Rango Salarial: <br>",
+             
             { retryPrompt:"❌ No entendí. Intenta de nuevo." });
     }
 
@@ -116,7 +121,7 @@ class SolicitudDialog extends ComponentDialog {
         await step.context.sendActivity("⏳ <b>Procesando por favor espera un momento...</b>");
 
         try {
-            const response = await axios.post('https://n8n-esencia-suite.zntoks.easypanel.host/webhook/simulacion-bot', datosParaEnvio, {
+            const response = await axios.post('https://n8n-esencia-suite.zntoks.easypanel.host/webhook-test/simulacion-bot', datosParaEnvio, {
                 headers: { 'Content-Type': 'application/json' }
             });
 
